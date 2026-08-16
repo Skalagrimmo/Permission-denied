@@ -1,0 +1,7 @@
+{
+  "name": "Permission Denied",
+  "description": "First-person cyberpunk immersive sim with colored ASCII renderer, procedural infiltration districts, hacking, stealth, and boss encounters optimized for 60fps on legacy OpenGL ES 2.0 hardware.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
