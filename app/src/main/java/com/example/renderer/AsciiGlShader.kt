@@ -98,10 +98,14 @@ out vec4 out_FragColor;
 void main() {
     float glyphAlpha = texture(u_GlyphAtlas, v_AtlasUV).r;
 
-    if (v_FxParams.x > 0.5) {
-        float glyphAlphaR = texture(u_GlyphAtlas, v_AtlasUV + vec2(0.0008, 0.0)).r;
-        float glyphAlphaB = texture(u_GlyphAtlas, v_AtlasUV - vec2(0.0008, 0.0)).r;
-        glyphAlpha = (glyphAlpha * 0.7) + (glyphAlphaR * 0.15) + (glyphAlphaB * 0.15);
+    // Subtle Chromatic Aberration sampling on active characters
+    vec3 glyphAlphaRgb = vec3(glyphAlpha);
+    if (v_FxParams.x > 0.0) {
+        float chromShift = 0.0010 * v_FxParams.x;
+        float glyphAlphaR = texture(u_GlyphAtlas, v_AtlasUV + vec2(chromShift, 0.0)).r;
+        float glyphAlphaB = texture(u_GlyphAtlas, v_AtlasUV - vec2(chromShift, 0.0)).r;
+        glyphAlphaRgb = vec3(glyphAlphaR, glyphAlpha, glyphAlphaB);
+        glyphAlpha = (glyphAlphaR + glyphAlpha + glyphAlphaB) * 0.3333;
     }
 
     vec4 fg = v_FgColor;
@@ -110,7 +114,7 @@ void main() {
     float brightnessBoost = 1.0 + (v_FxParams.x * u_BloomGlow * 0.6);
     vec3 boostedFgRgb = fg.rgb * brightnessBoost;
 
-    vec3 compositeRgb = mix(bg.rgb, boostedFgRgb, glyphAlpha * fg.a);
+    vec3 compositeRgb = mix(bg.rgb, boostedFgRgb, glyphAlphaRgb * fg.a);
     float compositeAlpha = max(bg.a, glyphAlpha * fg.a);
 
     if (u_ThermalVisionMode == 1) {
@@ -120,9 +124,11 @@ void main() {
         compositeRgb = mix(thermalCyan * luma, thermalHot * (luma * 1.5), smoothstep(0.4, 0.9, luma));
     }
 
+    // Subtle CRT Scanlines with Cathode Refresh Beam
     if (u_ScanlineIntensity > 0.0) {
-        float scanline = sin((v_ScreenUV.y * u_ScreenResolution.y * 1.5) + u_Time * 6.0) * 0.5 + 0.5;
-        float scanlineFactor = mix(1.0, 0.85 + 0.15 * scanline, u_ScanlineIntensity);
+        float linePattern = sin(v_ScreenUV.y * u_ScreenResolution.y * 3.14159265) * 0.5 + 0.5;
+        float rollBeam = sin(v_ScreenUV.y * 5.0 - u_Time * 2.0) * 0.5 + 0.5;
+        float scanlineFactor = mix(1.0, (0.84 + 0.16 * linePattern) * (0.97 + 0.03 * rollBeam), u_ScanlineIntensity);
         compositeRgb *= scanlineFactor;
     }
 

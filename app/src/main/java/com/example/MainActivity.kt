@@ -38,6 +38,10 @@ class MainActivity : ComponentActivity() {
                                 latestSave = uiState.latestSave,
                                 onNewGame = { viewModel.navigateTo(AppScreen.DISTRICT_SELECT) },
                                 onContinueSave = { save -> viewModel.loadSavedGame(save) },
+                                onOpenShowcase = {
+                                    viewModel.toggleShowcaseMode()
+                                    viewModel.navigateTo(AppScreen.PLAYING)
+                                },
                                 onOpenLeaderboard = { showLeaderboard = true },
                                 onOpenSettings = { showSettings = true }
                             )
@@ -86,11 +90,12 @@ class MainActivity : ComponentActivity() {
                             currentRamp = uiState.asciiRamp,
                             currentAnsi = uiState.ansiMode,
                             currentFilter = uiState.filterMode,
+                            currentRenderer = uiState.rendererType,
                             currentSens = uiState.touchSensitivity,
                             soundVol = uiState.soundVolume,
                             musicVol = uiState.musicVolume,
-                            onSaveSettings = { ramp, ansi, filter, sens, sVol, mVol ->
-                                viewModel.updateSettings(ramp, ansi, filter, sens, sVol, mVol)
+                            onSaveSettings = { ramp, ansi, filter, renderer, sens, sVol, mVol ->
+                                viewModel.updateSettings(ramp, ansi, filter, renderer, sens, sVol, mVol)
                             },
                             onDismiss = { showSettings = false }
                         )

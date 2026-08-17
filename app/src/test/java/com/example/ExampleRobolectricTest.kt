@@ -90,4 +90,112 @@ class ExampleRobolectricTest {
         assertTrue("Weapon should fire", fired)
         assertTrue(engine.currentWeapon.ammoInMag < engine.currentWeapon.maxMag)
     }
+
+    @Test
+    fun `primitives 3d mesh generator generates valid geometry buffers`() {
+        val cube = com.example.renderer.Primitives3DFactory.createCubeMesh()
+        assertNotNull(cube)
+        assertTrue(cube.indexCount > 0)
+        assertEquals(36, cube.indexCount)
+
+        val pyramid = com.example.renderer.Primitives3DFactory.createPyramidMesh()
+        assertNotNull(pyramid)
+        assertTrue(pyramid.indexCount > 0)
+
+        val cylinder = com.example.renderer.Primitives3DFactory.createCylinderMesh()
+        assertNotNull(cylinder)
+        assertTrue(cylinder.indexCount > 0)
+
+        val sphere = com.example.renderer.Primitives3DFactory.createSphereMesh()
+        assertNotNull(sphere)
+        assertTrue(sphere.indexCount > 0)
+
+        val torus = com.example.renderer.Primitives3DFactory.createTorusMesh()
+        assertNotNull(torus)
+        assertTrue(torus.indexCount > 0)
+    }
+
+    @Test
+    fun `first person camera controller updates position, rotation and view matrix`() {
+        val camera = com.example.renderer.FirstPersonCameraController(
+            posX = 0.0f,
+            posY = 1.6f,
+            posZ = 5.0f,
+            yaw = 0.0f,
+            pitch = 0.0f
+        )
+
+        // Verify rotation and pitch clamping
+        camera.rotate(45.0f, 30.0f)
+        assertEquals(45.0f, camera.yaw, 0.01f)
+        assertEquals(30.0f, camera.pitch, 0.01f)
+
+        // Pitch should clamp at 85.0
+        camera.rotate(0.0f, 100.0f)
+        assertEquals(85.0f, camera.pitch, 0.01f)
+
+        // Verify forward movement
+        camera.reset()
+        assertEquals(0.0f, camera.posX, 0.01f)
+        assertEquals(5.0f, camera.posZ, 0.01f)
+
+        camera.forwardInput = 1.0f
+        camera.moveSpeed = 4.0f
+        camera.update(0.5f) // Should move forward by 2.0 units (along Z when yaw=0)
+        assertEquals(7.0f, camera.posZ, 0.05f)
+
+        // Verify View Matrix calculation
+        val viewMatrix = FloatArray(16)
+        camera.computeViewMatrix(viewMatrix)
+        assertNotNull(viewMatrix)
+        assertTrue(viewMatrix[15] != 0f || viewMatrix[0] != 0f)
+    }
+
+    @Test
+    fun `procedural level mesh generator parses custom ASCII layout into vertex buffers`() {
+        val generator = com.example.renderer.ProceduralLevelMeshGenerator(tileSize = 2.0f, wallHeight = 2.5f)
+
+        val customAscii = listOf(
+            "######",
+            "#S..D#",
+            "#..T.#",
+            "#C..E#",
+            "######"
+        )
+
+        val levelBuffers = generator.buildLevelBuffers(customAscii)
+
+        assertNotNull(levelBuffers)
+        assertEquals(6, levelBuffers.gridWidth)
+        assertEquals(5, levelBuffers.gridHeight)
+
+        // Verify vertex and index buffers are generated
+        assertTrue(levelBuffers.wallsMesh.indexCount > 0)
+        assertTrue(levelBuffers.floorsMesh.indexCount > 0)
+        assertTrue(levelBuffers.interactablesMesh.indexCount > 0)
+        assertTrue(levelBuffers.combinedMesh.indexCount > 0)
+
+        // Check extracted interactable entities (Spawn S, Door D, Terminal T, Cache C, Extraction E)
+        val symbolsFound = levelBuffers.entities.map { it.symbol }.toSet()
+        assertTrue(symbolsFound.contains('S'))
+        assertTrue(symbolsFound.contains('D'))
+        assertTrue(symbolsFound.contains('T'))
+        assertTrue(symbolsFound.contains('C'))
+        assertTrue(symbolsFound.contains('E'))
+    }
+
+    @Test
+    fun `procedural level mesh generator produces valid randomized ASCII levels`() {
+        val generator = com.example.renderer.ProceduralLevelMeshGenerator()
+        val asciiGrid = generator.generateProceduralAsciiLayout(width = 16, height = 16, seed = 12345L)
+
+        assertNotNull(asciiGrid)
+        assertEquals(16, asciiGrid.size)
+        assertEquals(16, asciiGrid[0].length)
+
+        val buffers = generator.buildLevelBuffers(asciiGrid)
+        assertNotNull(buffers)
+        assertTrue(buffers.combinedMesh.indexCount > 0)
+        assertTrue(buffers.entities.isNotEmpty())
+    }
 }

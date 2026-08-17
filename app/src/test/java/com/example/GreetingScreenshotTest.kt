@@ -28,6 +28,7 @@ class GreetingScreenshotTest {
                     latestSave = null,
                     onNewGame = {},
                     onContinueSave = {},
+                    onOpenShowcase = {},
                     onOpenLeaderboard = {},
                     onOpenSettings = {}
                 )

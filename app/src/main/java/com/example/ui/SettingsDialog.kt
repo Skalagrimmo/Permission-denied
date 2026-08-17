@@ -26,15 +26,17 @@ fun SettingsDialog(
     currentRamp: String,
     currentAnsi: String,
     currentFilter: String,
+    currentRenderer: String = "GL_ASCII_3D",
     currentSens: Float,
     soundVol: Float,
     musicVol: Float,
-    onSaveSettings: (ramp: String, ansi: String, filter: String, sens: Float, sVol: Float, mVol: Float) -> Unit,
+    onSaveSettings: (ramp: String, ansi: String, filter: String, renderer: String, sens: Float, sVol: Float, mVol: Float) -> Unit,
     onDismiss: () -> Unit
 ) {
     var ramp by remember { mutableStateOf(currentRamp) }
     var ansi by remember { mutableStateOf(currentAnsi) }
     var filter by remember { mutableStateOf(currentFilter) }
+    var renderer by remember { mutableStateOf(currentRenderer) }
     var sens by remember { mutableFloatStateOf(currentSens) }
     var sVol by remember { mutableFloatStateOf(soundVol) }
     var mVol by remember { mutableFloatStateOf(musicVol) }
@@ -136,10 +138,22 @@ fun SettingsDialog(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
+                // Renderer Pipeline (GLSurfaceView 3D vs Canvas)
+                SectionTitle("RENDERER PIPELINE")
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("GL_ASCII_3D", "CANVAS_ASCII").forEach { r ->
+                        OptionPill(
+                            label = if (r == "GL_ASCII_3D") "3D GL SURFACE" else "2D CANVAS",
+                            isSelected = renderer == r,
+                            onClick = { renderer = r }
+                        )
+                    }
+                }
+
                 // Save button
                 Button(
                     onClick = {
-                        onSaveSettings(ramp, ansi, filter, sens, sVol, mVol)
+                        onSaveSettings(ramp, ansi, filter, renderer, sens, sVol, mVol)
                         onDismiss()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colorScheme.primary),

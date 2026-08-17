@@ -34,6 +34,8 @@ data class GameUiState(
     val asciiRamp: String = "cyber",
     val ansiMode: String = "GAME",
     val filterMode: String = "BOX",
+    val rendererType: String = "GL_ASCII_3D",
+    val showcaseMode: Boolean = false,
     val touchSensitivity: Float = 1.0f,
     val soundVolume: Float = 0.8f,
     val musicVolume: Float = 0.6f,
@@ -228,10 +230,16 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         navigateTo(AppScreen.PLAYING)
     }
 
+    fun toggleShowcaseMode() {
+        audioEngine.playUiClick()
+        _uiState.update { it.copy(showcaseMode = !it.showcaseMode) }
+    }
+
     fun updateSettings(
         asciiRamp: String = _uiState.value.asciiRamp,
         ansiMode: String = _uiState.value.ansiMode,
         filterMode: String = _uiState.value.filterMode,
+        rendererType: String = _uiState.value.rendererType,
         touchSensitivity: Float = _uiState.value.touchSensitivity,
         soundVol: Float = _uiState.value.soundVolume,
         musicVol: Float = _uiState.value.musicVolume
@@ -244,6 +252,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 asciiRamp = asciiRamp,
                 ansiMode = ansiMode,
                 filterMode = filterMode,
+                rendererType = rendererType,
                 touchSensitivity = touchSensitivity,
                 soundVolume = soundVol,
                 musicVolume = musicVol

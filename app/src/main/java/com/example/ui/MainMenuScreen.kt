@@ -27,6 +27,7 @@ fun MainMenuScreen(
     latestSave: GameSaveEntity?,
     onNewGame: () -> Unit,
     onContinueSave: (GameSaveEntity) -> Unit,
+    onOpenShowcase: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -171,6 +172,26 @@ fun MainMenuScreen(
                             )
                         }
                     }
+                }
+
+                // 3D Primitives Showcase Button (GLSurfaceView)
+                OutlinedButton(
+                    onClick = onOpenShowcase,
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF00F0FF)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp)
+                        .testTag("showcase_button")
+                ) {
+                    Icon(Icons.Default.ViewInAr, contentDescription = null, tint = Color(0xFF00F0FF))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "3D CYBERPUNK PRIMITIVES SHOWCASE",
+                        color = Color(0xFF00F0FF),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp
+                    )
                 }
 
                 // Leaderboard Button

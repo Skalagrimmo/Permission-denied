@@ -27,27 +27,59 @@ fun GameScreen(
     var showSettingsInGame by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 1. 3D ASCII Hardware Rasterizer Surface
-        AndroidView(
-            factory = { ctx ->
-                GameCanvasView(ctx).apply {
-                    engine = viewModel.engine
-                    asciiRamp = uiState.asciiRamp
-                    ansiMode = uiState.ansiMode
-                    filterMode = uiState.filterMode
-                }
-            },
-            update = { view ->
-                view.engine = viewModel.engine
-                view.asciiRamp = uiState.asciiRamp
-                view.ansiMode = uiState.ansiMode
-                view.filterMode = uiState.filterMode
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+        // 1. 3D OpenGL ES Surface / Canvas Rasterizer Surface
+        if (uiState.rendererType == "GL_ASCII_3D") {
+            AndroidView(
+                factory = { ctx ->
+                    CyberpunkGlSurfaceView(ctx).apply {
+                        engine = viewModel.engine
+                        asciiRamp = uiState.asciiRamp
+                        ansiMode = uiState.ansiMode
+                        filterMode = uiState.filterMode
+                        showcaseMode = uiState.showcaseMode
+                    }
+                },
+                update = { view ->
+                    view.engine = viewModel.engine
+                    view.asciiRamp = uiState.asciiRamp
+                    view.ansiMode = uiState.ansiMode
+                    view.filterMode = uiState.filterMode
+                    view.showcaseMode = uiState.showcaseMode
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            AndroidView(
+                factory = { ctx ->
+                    GameCanvasView(ctx).apply {
+                        engine = viewModel.engine
+                        asciiRamp = uiState.asciiRamp
+                        ansiMode = uiState.ansiMode
+                        filterMode = uiState.filterMode
+                    }
+                },
+                update = { view ->
+                    view.engine = viewModel.engine
+                    view.asciiRamp = uiState.asciiRamp
+                    view.ansiMode = uiState.ansiMode
+                    view.filterMode = uiState.filterMode
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
-        // 2. Interactive HUD Overlay
-        if (!viewModel.engine.isGameOver && !viewModel.engine.isMissionComplete) {
+        // 2. Interactive HUD Overlay / Showcase HUD Overlay
+        if (uiState.showcaseMode) {
+            ShowcaseHudOverlay(
+                cameraController = null,
+                onExitShowcase = {
+                    viewModel.toggleShowcaseMode()
+                    viewModel.navigateTo(AppScreen.MAIN_MENU)
+                },
+                onOpenSettings = { showSettingsInGame = true },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (!viewModel.engine.isGameOver && !viewModel.engine.isMissionComplete) {
             GameHudOverlay(
                 engine = viewModel.engine,
                 sensitivity = uiState.touchSensitivity,
@@ -179,11 +211,12 @@ fun GameScreen(
                 currentRamp = uiState.asciiRamp,
                 currentAnsi = uiState.ansiMode,
                 currentFilter = uiState.filterMode,
+                currentRenderer = uiState.rendererType,
                 currentSens = uiState.touchSensitivity,
                 soundVol = uiState.soundVolume,
                 musicVol = uiState.musicVolume,
-                onSaveSettings = { ramp, ansi, filter, sens, sVol, mVol ->
-                    viewModel.updateSettings(ramp, ansi, filter, sens, sVol, mVol)
+                onSaveSettings = { ramp, ansi, filter, renderer, sens, sVol, mVol ->
+                    viewModel.updateSettings(ramp, ansi, filter, renderer, sens, sVol, mVol)
                 },
                 onDismiss = { showSettingsInGame = false }
             )
