@@ -303,7 +303,7 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
         val yawRad = Math.toRadians(eng.playerYaw.toDouble()).toFloat()
         val pitchRad = Math.toRadians(eng.playerPitch.toDouble()).toFloat()
 
-        val dirX = -sin(yawRad) * cos(pitchRad)
+        val dirX = sin(yawRad) * cos(pitchRad)
         val dirY = sin(pitchRad)
         val dirZ = cos(yawRad) * cos(pitchRad)
 

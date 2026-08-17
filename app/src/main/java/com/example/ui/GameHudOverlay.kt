@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,12 +10,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -79,17 +83,104 @@ fun GameHudOverlay(
                 }
         )
 
-        // 2. Top HUD Status Bar
-        TopStatusBar(
-            engine = engine,
-            onPauseClick = onPauseClick,
-            onInventoryClick = onInventoryClick,
+        // 2. Top Minimalist High-Contrast Animated HUD Overlay & Quick Actions
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-        )
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+        ) {
+            // Action & Quick Controls Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Stealth Threat Radar & Objective Tag
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(Color(0xDD060A0F), RoundedCornerShape(6.dp))
+                        .border(1.dp, if (engine.alarmsTriggered > 0) Color(0xFFFF1744) else Color(0x3300F0FF), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Radar,
+                        contentDescription = "Stealth Radar",
+                        tint = if (engine.alarmsTriggered > 0) Color(0xFFFF1744) else Color(0xFF00FF66),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (engine.alarmsTriggered > 0) "ALARM LVL ${engine.alarmsTriggered}" else "STEALTH OK",
+                        color = if (engine.alarmsTriggered > 0) Color(0xFFFF1744) else Color(0xFF00FF66),
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp
+                    )
+
+                    if (engine.ghostIndexAcquired) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFF00FF66), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "CORE SECURED",
+                                color = Color.Black,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 8.sp
+                            )
+                        }
+                    }
+                }
+
+                // Inventory & Pause Actions
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onInventoryClick,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(Color(0xDD060A0F), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0x4400F0FF), RoundedCornerShape(6.dp))
+                            .testTag("inventory_button")
+                    ) {
+                        Icon(
+                            Icons.Default.Inventory2,
+                            contentDescription = "Inventory",
+                            tint = Color(0xFF00F0FF),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onPauseClick,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(Color(0xDD060A0F), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0x4400F0FF), RoundedCornerShape(6.dp))
+                            .testTag("pause_button")
+                    ) {
+                        Icon(
+                            Icons.Default.Pause,
+                            contentDescription = "Pause",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+            }
+
+            // High-Contrast Animated Micro-Meters, Hacking Cooldown & Sleek Floating Toast
+            AsciiCyberHudOverlay(engine = engine)
+        }
 
         // 3. Center Interaction Prompt Button
         engine.nearbyPrompt?.let { prompt ->
@@ -291,7 +382,7 @@ fun GameHudOverlay(
 
                 // Sprint Toggle
                 SmallActionButton(
-                    icon = Icons.Default.DirectionsRun,
+                    icon = Icons.AutoMirrored.Filled.DirectionsRun,
                     label = if (engine.isSprinting) "SPRINT" else "WALK",
                     isActive = engine.isSprinting,
                     onClick = { engine.isSprinting = !engine.isSprinting },
@@ -461,17 +552,35 @@ fun HudIconButton(
     onClick: () -> Unit,
     testTag: String
 ) {
+    val infiniteTransition = rememberInfiniteTransition(label = "aug_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_alpha"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (isActive) 1.06f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "aug_scale"
+    )
+
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive) activeColor.copy(alpha = 0.25f) else Color(0xBB080E16)
+            containerColor = if (isActive) activeColor.copy(alpha = 0.3f * pulseAlpha) else Color(0xCC080E16)
         ),
         shape = RoundedCornerShape(8.dp),
         modifier = Modifier
-            .size(54.dp)
+            .size(52.dp)
+            .scale(scale)
             .border(
-                1.dp,
-                if (isActive) activeColor else Color(0x44FFFFFF),
-                RoundedCornerShape(8.dp)
+                width = if (isActive) 1.5.dp else 1.dp,
+                color = if (isActive) activeColor.copy(alpha = pulseAlpha) else Color(0x33FFFFFF),
+                shape = RoundedCornerShape(8.dp)
             )
             .clickable(onClick = onClick)
             .testTag(testTag)
@@ -485,7 +594,7 @@ fun HudIconButton(
                 icon,
                 contentDescription = label,
                 tint = if (isActive) activeColor else Color.White,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(19.dp)
             )
             Text(
                 text = label,
@@ -508,11 +617,15 @@ fun ConsumableButton(
     testTag: String
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xAA080E16)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xCC080E16)),
         shape = RoundedCornerShape(6.dp),
         modifier = Modifier
-            .size(46.dp)
-            .border(1.dp, if (count > 0) color.copy(alpha = 0.6f) else Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+            .size(44.dp)
+            .border(
+                1.dp,
+                if (count > 0) color.copy(alpha = 0.7f) else Color(0x22FFFFFF),
+                RoundedCornerShape(6.dp)
+            )
             .clickable(enabled = count > 0, onClick = onClick)
             .testTag(testTag)
     ) {
@@ -525,13 +638,13 @@ fun ConsumableButton(
                 icon,
                 contentDescription = label,
                 tint = if (count > 0) color else Color.DarkGray,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(15.dp)
             )
             Text(
                 text = "x$count",
                 color = if (count > 0) Color.White else Color.Gray,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 9.sp,
+                fontSize = 8.sp,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -546,14 +659,25 @@ fun SmallActionButton(
     onClick: () -> Unit,
     testTag: String
 ) {
+    val scale by animateFloatAsState(
+        targetValue = if (isActive) 1.05f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "btn_scale"
+    )
+
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive) Color(0xDD00F0FF) else Color(0xAA080E16)
+            containerColor = if (isActive) Color(0xDD00F0FF) else Color(0xCC080E16)
         ),
         shape = RoundedCornerShape(6.dp),
         modifier = Modifier
-            .size(48.dp)
-            .border(1.dp, Color(0xFF37474F), RoundedCornerShape(6.dp))
+            .size(46.dp)
+            .scale(scale)
+            .border(
+                1.dp,
+                if (isActive) Color(0xFF00F0FF) else Color(0xFF37474F),
+                RoundedCornerShape(6.dp)
+            )
             .clickable(onClick = onClick)
             .testTag(testTag)
     ) {
@@ -566,7 +690,7 @@ fun SmallActionButton(
                 icon,
                 contentDescription = label,
                 tint = if (isActive) Color.Black else Color.White,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(17.dp)
             )
             Text(
                 text = label,

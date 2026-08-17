@@ -198,4 +198,41 @@ class ExampleRobolectricTest {
         assertTrue(buffers.combinedMesh.indexCount > 0)
         assertTrue(buffers.entities.isNotEmpty())
     }
+
+    @Test
+    fun `renderAsciiBar produces accurate unicode block gauges`() {
+        val bar0 = com.example.ui.renderAsciiBar(0, 100, 10)
+        assertEquals("[░░░░░░░░░░]", bar0)
+
+        val bar50 = com.example.ui.renderAsciiBar(50, 100, 10)
+        assertEquals("[█████░░░░░]", bar50)
+
+        val bar100 = com.example.ui.renderAsciiBar(100, 100, 10)
+        assertEquals("[██████████]", bar100)
+    }
+
+    @Test
+    fun `game engine posts notifications and manages remote hack cooldown`() {
+        val engine = GameEngine()
+        engine.loadDistrict(DistrictId.DISTRICT_01)
+
+        // Verify initial net-link notification
+        assertTrue(engine.hudNotifications.isNotEmpty())
+        assertEquals("NET_LINK", engine.hudNotifications.first().tag)
+
+        // Post custom warning notification
+        engine.postNotification("TEST_TAG", "TEST_MESSAGE", NotificationLevel.WARNING, 3.0f)
+        assertEquals(2, engine.hudNotifications.size)
+        assertEquals("TEST_TAG", engine.hudNotifications.first().tag)
+
+        // Test remote quick hack execution
+        val result = engine.performRemoteQuickHack()
+        // If targets are within range, cooldown will be set
+        if (result) {
+            assertTrue(engine.remoteHackCooldown > 0f)
+            // Decay cooldown by 6 seconds
+            engine.update(0f, 0f, 0f, 0f, 6.0f)
+            assertEquals(0f, engine.remoteHackCooldown, 0.01f)
+        }
+    }
 }

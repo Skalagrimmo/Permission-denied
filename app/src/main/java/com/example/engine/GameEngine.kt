@@ -31,8 +31,13 @@ class GameEngine(
     var isOverclocked = false
     var overclockTimer = 0f
     var dashCooldownTimer = 0f
+    var remoteHackCooldown = 0f
+    val remoteHackMaxCooldown = 5.0f
 
-    var weapons = mutableListOf(
+    // Live High-Contrast ASCII HUD Notifications Queue
+    val hudNotifications = mutableListOf<HudNotification>()
+
+    val weapons = mutableListOf<Weapon>(
         Weapon.createDefaultPistol(),
         Weapon.createStunner(),
         Weapon.createSmg(),
@@ -106,7 +111,77 @@ class GameEngine(
         evidenceCollected = 0
         contractsCompleted = 0
         elapsedSeconds = 0L
+        remoteHackCooldown = 0f
+        hudNotifications.clear()
         audioElement.setAlarmLevel(0)
+        postNotification("NET_LINK", "NEURAL LINK ESTABLISHED // ${district.title.uppercase()}", NotificationLevel.SUCCESS)
+    }
+
+    fun postNotification(
+        tag: String,
+        message: String,
+        level: NotificationLevel = NotificationLevel.INFO,
+        durationSec: Float = 3.5f
+    ) {
+        val totalSec = elapsedSeconds
+        val mm = (totalSec / 60).toString().padStart(2, '0')
+        val ss = (totalSec % 60).toString().padStart(2, '0')
+        val notif = HudNotification(
+            tag = tag,
+            message = message,
+            level = level,
+            timestampText = "$mm:$ss",
+            remainingLifetimeSec = durationSec,
+            initialLifetimeSec = durationSec
+        )
+        hudNotifications.add(0, notif)
+        if (hudNotifications.size > 5) {
+            hudNotifications.removeAt(hudNotifications.lastIndex)
+        }
+    }
+
+    fun performRemoteQuickHack(): Boolean {
+        if (remoteHackCooldown > 0f) {
+            postNotification("ICE_WARN", "CYBERDECK RECHARGE [${String.format(java.util.Locale.US, "%.1f", remoteHackCooldown)}s]", NotificationLevel.WARNING)
+            return false
+        }
+        if (playerEnergy < 25f) {
+            postNotification("PWR_WARN", "INSUFFICIENT ENERGY FOR REMOTE HACK", NotificationLevel.WARNING)
+            return false
+        }
+
+        // Search for nearest enemy, camera, or turret
+        var target: Enemy? = null
+        var minDistance = 14.0f
+        world.enemies.filter { it.hp > 0 && it.state != EnemyAiState.UNCONSCIOUS && !it.isPoweredOff }.forEach { enemy ->
+            val dist = MathUtils.distance2D(playerX, playerZ, enemy.x, enemy.z)
+            if (dist < minDistance) {
+                minDistance = dist
+                target = enemy
+            }
+        }
+
+        val enemyTarget = target
+        if (enemyTarget != null) {
+            playerEnergy = max(0f, playerEnergy - 25f)
+            remoteHackCooldown = remoteHackMaxCooldown
+            audioElement.playHackBeep(true)
+            haptics?.onHackSuccess()
+
+            if (enemyTarget.type == EnemyType.SURVEILLANCE_CAMERA || enemyTarget.type == EnemyType.CEILING_TURRET) {
+                enemyTarget.isPoweredOff = true
+                postNotification("SYS_OVERRIDE", "REMOTE ICE BREACH: ${enemyTarget.type.name} DISABLED", NotificationLevel.SUCCESS)
+            } else {
+                enemyTarget.state = EnemyAiState.UNCONSCIOUS
+                enemyTarget.hp = 0
+                enemiesStunned++
+                postNotification("NEURAL_EMP", "SYNAPSE OVERLOAD: ${enemyTarget.type.name} NEUTRALIZED", NotificationLevel.SUCCESS)
+            }
+            return true
+        } else {
+            postNotification("SCAN_FAIL", "NO REMOTE TARGETS IN WIRELESS RANGE", NotificationLevel.INFO)
+            return false
+        }
     }
 
     fun update(moveX: Float, moveZ: Float, deltaYaw: Float, deltaPitch: Float, deltaSec: Float) {
@@ -150,6 +225,19 @@ class GameEngine(
         }
         if (dashCooldownTimer > 0f) {
             dashCooldownTimer -= deltaSec
+        }
+        if (remoteHackCooldown > 0f) {
+            remoteHackCooldown = max(0f, remoteHackCooldown - deltaSec)
+        }
+
+        // Decay Notifications
+        val iter = hudNotifications.iterator()
+        while (iter.hasNext()) {
+            val notif = iter.next()
+            notif.remainingLifetimeSec -= deltaSec
+            if (notif.remainingLifetimeSec <= 0f) {
+                iter.remove()
+            }
         }
 
         // Passive Energy Recharge
@@ -639,10 +727,11 @@ class GameEngine(
         }
 
         val hasShield = playerArmor > 0
+        var absorbedArmor = 0
         if (playerArmor > 0) {
-            val armorDmg = min(playerArmor, dmg)
-            playerArmor -= armorDmg
-            dmg -= armorDmg
+            absorbedArmor = min(playerArmor, dmg)
+            playerArmor -= absorbedArmor
+            dmg -= absorbedArmor
         }
         playerHealth -= dmg
         damageFlashAlpha = 1.0f
@@ -652,6 +741,15 @@ class GameEngine(
         if (playerHealth <= 0) {
             playerHealth = 0
             isGameOver = true
+            postNotification("SYS_HALT", "VITAL SIGNS FLATLINED // MISSION FAILED", NotificationLevel.CRITICAL)
+        } else if (dmg > 0) {
+            if (playerHealth < 25) {
+                postNotification("INTEGRITY_CRIT", "CRITICAL DAMAGE: HP AT $playerHealth% - STIM REQ", NotificationLevel.CRITICAL)
+            } else {
+                postNotification("DAMAGE_TAKEN", "BIO-FEEDBACK: -$dmg HP (INTEGRITY: $playerHealth%)", NotificationLevel.WARNING)
+            }
+        } else if (hasShield) {
+            postNotification("SHIELD_ABSORB", "SHIELD ABSORBED IMPACT (-$absorbedArmor ARM)", NotificationLevel.INFO)
         }
     }
 
@@ -660,6 +758,7 @@ class GameEngine(
         audioElement.setAlarmLevel(min(3, alarmsTriggered))
         audioElement.playAlarm()
         haptics?.onAlarmTriggered()
+        postNotification("SYS_ALERT", "SECURITY ALARM LEVEL $alarmsTriggered TRIGGERED", NotificationLevel.CRITICAL)
         world.enemies.filter { it.hp > 0 && it.state != EnemyAiState.UNCONSCIOUS }.forEach {
             it.alertLevel = 100f
             it.state = EnemyAiState.ALERT
@@ -684,6 +783,7 @@ class GameEngine(
                 audioElement.playHackBeep(true)
                 haptics?.onHackSuccess()
                 playerCredits += 500
+                postNotification("PRIMARY_OBJ", "GHOST INDEX ENCRYPTION CORE DECRYPTED [+500 CR]", NotificationLevel.SUCCESS, 5.0f)
             }
             return
         }
@@ -693,6 +793,7 @@ class GameEngine(
         if (distExtract < 2.0f && ghostIndexAcquired) {
             nearbyPrompt = "ESCAPE & EXTRACT"
             nearbyInteractableAction = {
+                postNotification("EXFIL", "EXTRACTION CONFIRMED // MISSION REPORT GENERATING", NotificationLevel.SUCCESS)
                 finishMission(EndingChoice.LEAK)
             }
             return
@@ -728,6 +829,7 @@ class GameEngine(
                         world.grid[door.x][door.z] = TileType.DOOR_OPEN
                         audioElement.playUiClick()
                         haptics?.onKeycardUnlocked()
+                        postNotification("SECURITY", "SECURITY ACCESS GRANTED: ${reqKey?.name ?: "KEYCARD"}", NotificationLevel.SUCCESS)
                     }
                 } else {
                     nearbyPrompt = "DOOR LOCKED (${reqKey?.name ?: "KEY REQUIRED"})"
@@ -745,6 +847,7 @@ class GameEngine(
                 term.isHacked = true
                 audioElement.playUiClick()
                 haptics?.onHackNodeCaptured()
+                postNotification("JACK_IN", "CYBERSAPACE PROTOCOL INITIATED // ICE LVL ${term.securityIceLevel}", NotificationLevel.INFO)
             }
             return
         }
@@ -761,8 +864,15 @@ class GameEngine(
                 } else {
                     inventory.add(InventoryItem(chest.id.toString(), chest.itemType, chest.itemType.name.replace('_', ' '), "Collected item", chest.count))
                 }
-                if (chest.itemType == ItemType.EVIDENCE_SLATE) evidenceCollected++
-                if (chest.itemType == ItemType.FACTION_CONTRACT) contractsCompleted++
+                if (chest.itemType == ItemType.EVIDENCE_SLATE) {
+                    evidenceCollected++
+                    postNotification("DATA_SLATE", "CLASSIFIED EVIDENCE RECOVERED ($evidenceCollected)", NotificationLevel.SUCCESS)
+                } else if (chest.itemType == ItemType.FACTION_CONTRACT) {
+                    contractsCompleted++
+                    postNotification("CONTRACT", "FACTION BOUNTY CONTRACT SECURED ($contractsCompleted)", NotificationLevel.SUCCESS)
+                } else {
+                    postNotification("INVENTORY", "ACQUIRED: ${chest.itemType.name} x${chest.count}", NotificationLevel.INFO)
+                }
                 audioElement.playUiClick()
                 haptics?.onLootCollected()
             }
