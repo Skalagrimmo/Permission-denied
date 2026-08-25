@@ -80,12 +80,13 @@ fun GameScreen(
                 modifier = Modifier.fillMaxSize()
             )
         } else if (!viewModel.engine.isGameOver && !viewModel.engine.isMissionComplete) {
-            GameHudOverlay(
+GameHudOverlay(
                 engine = viewModel.engine,
                 sensitivity = uiState.touchSensitivity,
                 onPauseClick = { viewModel.togglePause() },
                 onInventoryClick = { viewModel.toggleInventory() },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                isPaused = uiState.isPaused
             )
         }
 

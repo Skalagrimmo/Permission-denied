@@ -79,7 +79,7 @@ class GameAudioEngine {
                 val pcmBuffer = ShortArray(bufferSize)
                 val rng = java.util.Random()
 
-                while (isActive && isRunning) {
+                while (isRunning) {
                     // 1. Check Music Step Sequencer
                     if (isBgmActive && musicVolume > 0.01f && !isMuted) {
                         val noteIntervalSamples = if (alarmLevel > 0) (sampleRate * 0.22f).toInt() else (sampleRate * 0.40f).toInt()

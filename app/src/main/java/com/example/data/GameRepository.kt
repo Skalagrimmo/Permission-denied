@@ -12,7 +12,7 @@ class GameRepository private constructor(context: Context) {
         context.applicationContext,
         AppDatabase::class.java,
         "permission_denied.db"
-    ).fallbackToDestructiveMigration().build()
+    ).addMigrations(databaseMigration).fallbackToDestructiveMigration().build()
 
     private val saveDao = db.gameSaveDao()
     private val scoreDao = db.highScoreDao()
@@ -50,6 +50,12 @@ class GameRepository private constructor(context: Context) {
 
     suspend fun updateCampaignProgress(progress: CampaignProgressEntity) = withContext(Dispatchers.IO) {
         progressDao.updateProgress(progress)
+    }
+
+    private val databaseMigration = object : Migration(1, 2) {
+        override fun migrate(database: androidx.room.sqlite.SupportSQLiteDatabase) {
+            // Add any schema changes here for version 2
+        }
     }
 
     companion object {
