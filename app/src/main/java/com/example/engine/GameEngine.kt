@@ -12,7 +12,8 @@ class GameEngine(
     var world: GeneratedWorld = WorldGenerator.generateDistrict(DistrictId.DISTRICT_01)
         private set
 
-    // Player State
+    // Player State & Movement Controller
+    val movementController: PlayerMovementController = PlayerMovementController()
     var playerX = 2.5f
     var playerY = 0.5f
     var playerZ = 2.5f
@@ -195,10 +196,10 @@ class GameEngine(
             secondAccumulator -= 1.0f
         }
 
-        // Update View Angles
-        playerYaw = (playerYaw + deltaYaw) % 360f
-        if (playerYaw < 0) playerYaw += 360f
-        playerPitch = (playerPitch + deltaPitch).coerceIn(-45f, 45f)
+        // Update View Angles (Non-inverted FPS orientation)
+        val (newYaw, newPitch) = movementController.updateViewAngles(playerYaw, playerPitch, deltaYaw, deltaPitch)
+        playerYaw = newYaw
+        playerPitch = newPitch
 
         // Augmentation Timers & Energy
         if (isCloaked) {
@@ -260,23 +261,14 @@ class GameEngine(
         if (muzzleFlashAlpha > 0f) muzzleFlashAlpha = max(0f, muzzleFlashAlpha - deltaSec * 6.0f)
         if (damageFlashAlpha > 0f) damageFlashAlpha = max(0f, damageFlashAlpha - deltaSec * 3.0f)
 
-        // Move Player with Collision
-        val speed = when {
-            isCrouching -> 1.5f
-            isSprinting -> 4.5f
-            else -> 3.0f
+        // 3D Movement with Continuous ASCII Grid Collision & Sliding
+        val currentSpeed = when {
+            isCrouching -> movementController.crouchSpeed
+            isSprinting -> movementController.sprintSpeed
+            else -> movementController.walkSpeed
         }
-        val radYaw = playerYaw * MathUtils.DEG_TO_RAD
-        val forwardX = sin(radYaw)
-        val forwardZ = cos(radYaw)
-        val rightX = cos(radYaw)
-        val rightZ = -sin(radYaw)
 
-        val vx = (forwardX * moveZ + rightX * moveX) * speed * simDelta
-        val vz = (forwardZ * moveZ + rightZ * moveX) * speed * simDelta
-
-        val newX = playerX + vx
-        val newZ = playerZ + vz
+        val (vx, vz) = movementController.computeVelocity(moveX, moveZ, playerYaw, currentSpeed, simDelta)
 
         // Footsteps
         if (abs(vx) > 0.001f || abs(vz) > 0.001f) {
@@ -291,13 +283,10 @@ class GameEngine(
             }
         }
 
-        // Axis-aligned wall collision
-        if (!isSolidAt(newX, playerZ)) {
-            playerX = newX
-        }
-        if (!isSolidAt(playerX, newZ)) {
-            playerZ = newZ
-        }
+        // Resolve 3D motion against ASCII grid with sliding collision resolution
+        val (resolvedX, resolvedZ) = movementController.resolveGridMovement(playerX, playerZ, vx, vz, world)
+        playerX = resolvedX
+        playerZ = resolvedZ
 
         // Check Laser Tripwires
         val gridX = playerX.toInt()
@@ -352,12 +341,8 @@ class GameEngine(
         checkNearbyInteractions()
     }
 
-    private fun isSolidAt(x: Float, z: Float): Boolean {
-        val gx = x.toInt()
-        val gz = z.toInt()
-        if (gx !in 0 until world.width || gz !in 0 until world.height) return true
-        val tile = world.grid[gx][gz]
-        return tile.isSolid
+    fun isSolidAt(x: Float, z: Float): Boolean {
+        return movementController.checkCollisionWithWorld(x, z, world)
     }
 
     fun fireWeapon(): Boolean {

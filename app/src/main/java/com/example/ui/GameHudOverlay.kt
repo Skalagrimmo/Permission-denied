@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -18,10 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -49,6 +53,20 @@ fun GameHudOverlay(
     var stickOffset by remember { mutableStateOf(Offset.Zero) }
     val maxStickRadius = 60f
 
+    // WASD Keyboard state
+    var wPressed by remember { mutableStateOf(false) }
+    var sPressed by remember { mutableStateOf(false) }
+    var aPressed by remember { mutableStateOf(false) }
+    var dPressed by remember { mutableStateOf(false) }
+
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        try {
+            focusRequester.requestFocus()
+        } catch (_: Exception) {}
+    }
+
     // Running game loop driver
     LaunchedEffect(Unit) {
         var lastTime = System.nanoTime()
@@ -58,15 +76,91 @@ fun GameHudOverlay(
                 lastTime = frameTime
 
                 // Calculate movement from joystick
-                val moveX = (stickOffset.x / maxStickRadius).coerceIn(-1f, 1f)
-                val moveZ = -(stickOffset.y / maxStickRadius).coerceIn(-1f, 1f)
+                val stickMoveX = (stickOffset.x / maxStickRadius).coerceIn(-1f, 1f)
+                val stickMoveZ = -(stickOffset.y / maxStickRadius).coerceIn(-1f, 1f)
 
-                engine.update(moveX, moveZ, 0f, 0f, deltaSec)
+                // Calculate movement from keyboard
+                val keyMoveX = (if (dPressed) 1f else 0f) - (if (aPressed) 1f else 0f)
+                val keyMoveZ = (if (wPressed) 1f else 0f) - (if (sPressed) 1f else 0f)
+
+                // Combine analog joystick + digital WASD
+                val totalMoveX = (stickMoveX + keyMoveX).coerceIn(-1f, 1f)
+                val totalMoveZ = (stickMoveZ + keyMoveZ).coerceIn(-1f, 1f)
+
+                engine.update(totalMoveX, totalMoveZ, 0f, 0f, deltaSec)
             }
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { keyEvent ->
+                val isDown = keyEvent.type == KeyEventType.KeyDown
+                val isUp = keyEvent.type == KeyEventType.KeyUp
+
+                when (keyEvent.key) {
+                    Key.W, Key.DirectionUp -> {
+                        if (isDown) wPressed = true
+                        if (isUp) wPressed = false
+                        true
+                    }
+                    Key.S, Key.DirectionDown -> {
+                        if (isDown) sPressed = true
+                        if (isUp) sPressed = false
+                        true
+                    }
+                    Key.A, Key.DirectionLeft -> {
+                        if (isDown) aPressed = true
+                        if (isUp) aPressed = false
+                        true
+                    }
+                    Key.D, Key.DirectionRight -> {
+                        if (isDown) dPressed = true
+                        if (isUp) dPressed = false
+                        true
+                    }
+                    Key.ShiftLeft, Key.ShiftRight -> {
+                        if (isDown) engine.isSprinting = true
+                        if (isUp) engine.isSprinting = false
+                        true
+                    }
+                    Key.C, Key.CtrlLeft -> {
+                        if (isDown) engine.isCrouching = !engine.isCrouching
+                        true
+                    }
+                    Key.Spacebar -> {
+                        if (isDown && engine.activeAugmentations.contains(AugmentationType.DASH_THRUSTERS)) {
+                            engine.activateDash()
+                        }
+                        true
+                    }
+                    Key.E, Key.Enter -> {
+                        if (isDown) engine.nearbyInteractableAction?.invoke()
+                        true
+                    }
+                    Key.R -> {
+                        if (isDown) engine.reloadCurrentWeapon()
+                        true
+                    }
+                    Key.F -> {
+                        if (isDown) engine.performRemoteQuickHack()
+                        true
+                    }
+                    Key.I, Key.Tab -> {
+                        if (isDown) onInventoryClick()
+                        true
+                    }
+                    Key.Escape -> {
+                        if (isDown) onPauseClick()
+                        true
+                    }
+                    else -> false
+                }
+            }
+    ) {
         // 1. Right Look Touch Area (Screen Swipe for Camera Aiming)
         Box(
             modifier = Modifier

@@ -235,4 +235,50 @@ class ExampleRobolectricTest {
             assertEquals(0f, engine.remoteHackCooldown, 0.01f)
         }
     }
+
+    @Test
+    fun `player movement controller calculates forward and strafe vectors correctly without view inversion`() {
+        val controller = com.example.engine.PlayerMovementController()
+
+        // Facing North (yaw = 0): Forward is +Z, Strafe Right is +X
+        val (vx0, vz0) = controller.computeVelocity(moveX = 0f, moveZ = 1f, yawDegrees = 0f, speed = 10f, deltaSec = 1f)
+        assertEquals(0f, vx0, 0.001f)
+        assertEquals(10f, vz0, 0.001f)
+
+        // Facing East (yaw = 90): Forward is +X, Strafe Right is -Z
+        val (vx90, vz90) = controller.computeVelocity(moveX = 0f, moveZ = 1f, yawDegrees = 90f, speed = 10f, deltaSec = 1f)
+        assertEquals(10f, vx90, 0.001f)
+        assertEquals(0f, vz90, 0.001f)
+
+        // Non-inverted view rotation
+        val (yaw, pitch) = controller.updateViewAngles(currentYaw = 0f, currentPitch = 0f, deltaYaw = 15f, deltaPitch = 20f)
+        assertEquals(15f, yaw, 0.001f)
+        assertEquals(20f, pitch, 0.001f)
+
+        // Pitch clamp check
+        val (_, clampedPitch) = controller.updateViewAngles(currentYaw = 0f, currentPitch = 40f, deltaYaw = 0f, deltaPitch = 50f)
+        assertEquals(controller.maxPitch, clampedPitch, 0.001f)
+    }
+
+    @Test
+    fun `player movement controller resolves collision with solid tiles in ASCII grid`() {
+        val engine = GameEngine()
+        engine.loadDistrict(DistrictId.DISTRICT_01)
+        val controller = engine.movementController
+
+        val startX = engine.playerX
+        val startZ = engine.playerZ
+
+        // Ensure start position is clear
+        assertFalse(controller.checkCollisionWithWorld(startX, startZ, engine.world))
+
+        // Moving towards an open tile should update position
+        val (openX, openZ) = controller.resolveGridMovement(startX, startZ, 0.1f, 0.1f, engine.world)
+        assertFalse(controller.checkCollisionWithWorld(openX, openZ, engine.world))
+
+        // Attempting to move outside world boundaries should be clamped safely
+        val (clampedX, clampedZ) = controller.resolveGridMovement(startX, startZ, -100f, -100f, engine.world)
+        assertTrue(clampedX >= controller.playerRadius)
+        assertTrue(clampedZ >= controller.playerRadius)
+    }
 }
