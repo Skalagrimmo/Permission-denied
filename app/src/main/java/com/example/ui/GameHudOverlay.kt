@@ -34,7 +34,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModelScope
 import com.example.engine.GameEngine
 import com.example.model.AugmentationType
 import com.example.model.ItemType
@@ -61,46 +60,39 @@ fun GameHudOverlay(
     var aPressed by remember { mutableStateOf(false) }
     var dPressed by remember { mutableStateOf(false) }
 
-val focusRequester = remember { FocusRequester() }
+    val focusRequester = remember { FocusRequester() }
 
-// Running game loop driver - using viewModelScope for proper lifecycle management
-// Paused when isPaused is true (passed as parameter)
-var gameActive by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        try {
+            focusRequester.requestFocus()
+        } catch (_: Exception) {}
+    }
 
-LaunchedEffect(gameActive) {
-    if (!gameActive) return@LaunchedEffect
-
-    viewModelScope.launch {
+    // Running game loop driver with frame pacing and pause awareness
+    LaunchedEffect(isPaused) {
+        if (isPaused) return@LaunchedEffect
         var lastTime = System.nanoTime()
-        while (gameActive) {
-            try {
-                withFrameNanos { frameTime ->
-                    val deltaSec = ((frameTime - lastTime) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
-                    lastTime = frameTime
+        while (true) {
+            withFrameNanos { frameTime ->
+                val deltaSec = ((frameTime - lastTime) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+                lastTime = frameTime
 
-                    // Calculate movement from joystick
-                    val stickMoveX = (stickOffset.x / maxStickRadius).coerceIn(-1f, 1f)
-                    val stickMoveZ = -(stickOffset.y / maxStickRadius).coerceIn(-1f, 1f)
+                // Calculate movement from joystick
+                val stickMoveX = (stickOffset.x / maxStickRadius).coerceIn(-1f, 1f)
+                val stickMoveZ = -(stickOffset.y / maxStickRadius).coerceIn(-1f, 1f)
 
-                    // Calculate movement from keyboard
-                    val keyMoveX = (if (dPressed) 1f else 0f) - (if (aPressed) 1f else 0f)
-                    val keyMoveZ = (if (wPressed) 1f else 0f) - (if (sPressed) 1f else 0f)
+                // Calculate movement from keyboard
+                val keyMoveX = (if (dPressed) 1f else 0f) - (if (aPressed) 1f else 0f)
+                val keyMoveZ = (if (wPressed) 1f else 0f) - (if (sPressed) 1f else 0f)
 
-                    // Combine analog joystick + digital WASD
-                    val totalMoveX = (stickMoveX + keyMoveX).coerceIn(-1f, 1f)
-                    val totalMoveZ = (stickMoveZ + keyMoveZ).coerceIn(-1f, 1f)
+                // Combine analog joystick + digital WASD
+                val totalMoveX = (stickMoveX + keyMoveX).coerceIn(-1f, 1f)
+                val totalMoveZ = (stickMoveZ + keyMoveZ).coerceIn(-1f, 1f)
 
-                    engine.update(totalMoveX, totalMoveZ, 0f, 0f, deltaSec)
-                }
-            } catch (e: Exception) {
-                // Loop gracefully handles composition changes
+                engine.update(totalMoveX, totalMoveZ, 0f, 0f, deltaSec)
             }
-            delay(16L) // ~60 FPS frame pacing
         }
     }
-}
-
-// Game HUD Overlay UI elements - all inside the composable function
 
     Box(
         modifier = modifier

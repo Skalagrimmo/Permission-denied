@@ -2,11 +2,19 @@ package com.example.data
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
 class GameRepository private constructor(context: Context) {
+
+    private val databaseMigration = object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Future schema migrations
+        }
+    }
 
     private val db = Room.databaseBuilder(
         context.applicationContext,
@@ -50,12 +58,6 @@ class GameRepository private constructor(context: Context) {
 
     suspend fun updateCampaignProgress(progress: CampaignProgressEntity) = withContext(Dispatchers.IO) {
         progressDao.updateProgress(progress)
-    }
-
-    private val databaseMigration = object : Migration(1, 2) {
-        override fun migrate(database: androidx.room.sqlite.SupportSQLiteDatabase) {
-            // Add any schema changes here for version 2
-        }
     }
 
     companion object {
