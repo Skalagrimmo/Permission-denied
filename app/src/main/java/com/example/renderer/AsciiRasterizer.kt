@@ -123,13 +123,16 @@ class AsciiRasterizer(
             }
 
             var hit = false
+            var ddaSteps = 0
             var side = 0 // 0 for X wall, 1 for Z wall
             var hitTile = TileType.EMPTY
             var hitColor = 0xFF00FFCC.toInt()
             var hitHeight = 1.0f
             var distance = 0.0f
 
-            while (!hit && distance < maxRayDist) {
+            // Stage 1 fix: hard step bound. The old maxRayDist guard never updated
+            // distance inside the loop, so the only exit was hitting a wall.
+            while (!hit && ddaSteps++ < 64) {
                 if (sideDistX < sideDistZ) {
                     sideDistX += deltaDistX
                     mapX += stepX

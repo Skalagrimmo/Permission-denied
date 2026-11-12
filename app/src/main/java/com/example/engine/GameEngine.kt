@@ -85,6 +85,9 @@ class GameEngine(
     private var lastSuspiciousPulseTimer = 0f
     private var laserTripwireTimer = 0f
 
+    // Stage 1 perf: one shared RNG instead of allocating a new Random() every frame
+    private val rng = Random()
+
     // Active Hacking Session (if any)
     var activeHacking: HackingSession? = null
 
@@ -573,7 +576,6 @@ class GameEngine(
     }
 
     private fun updateEnemies(deltaSec: Float) {
-        val rng = Random()
         world.enemies.filter { it.hp > 0 && it.state != EnemyAiState.UNCONSCIOUS && !it.isPoweredOff }.forEach { enemy ->
             val distToPlayer = MathUtils.distance2D(playerX, playerZ, enemy.x, enemy.z)
 

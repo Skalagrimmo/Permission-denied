@@ -37,6 +37,34 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
     private val normalMatrix = FloatArray(16)
     private val scratchMatrix = FloatArray(16)
 
+    // Stage 1 perf: pre-allocated material colors (zero per-frame allocations in render loop)
+    private val COL_FLOOR = floatArrayOf(0.08f, 0.12f, 0.18f, 1f)
+    private val EMIT_FLOOR = floatArrayOf(0f, 0.02f, 0.05f)
+    private val COL_CEIL = floatArrayOf(0.04f, 0.06f, 0.10f, 1f)
+    private val EMIT_ZERO = floatArrayOf(0f, 0f, 0f)
+    private val COL_WALL = floatArrayOf(0.20f, 0.28f, 0.38f, 1f)
+    private val EMIT_WALL = floatArrayOf(0.0f, 0.1f, 0.2f)
+    private val COL_GLASS = floatArrayOf(0.0f, 0.8f, 1.0f, 0.5f)
+    private val EMIT_GLASS = floatArrayOf(0.0f, 0.9f, 1.0f)
+    private val COL_DOOR = floatArrayOf(0.35f, 0.4f, 0.45f, 1f)
+    private val EMIT_DOOR_RED = floatArrayOf(1.0f, 0.1f, 0.1f)
+    private val EMIT_DOOR_BLUE = floatArrayOf(0.0f, 0.7f, 1.0f)
+    private val COL_TERMINAL = floatArrayOf(0.1f, 0.2f, 0.3f, 1f)
+    private val EMIT_TERMINAL = floatArrayOf(0.0f, 0.8f, 0.9f)
+    private val COL_LASER = floatArrayOf(1.0f, 0.0f, 0.3f, 1f)
+    private val EMIT_LASER = floatArrayOf(1.0f, 0.1f, 0.2f)
+    private val COL_DRONE = floatArrayOf(0.9f, 0.1f, 0.2f, 1f)
+    private val EMIT_DRONE = floatArrayOf(1.0f, 0.2f, 0.2f)
+    private val COL_BOSS = floatArrayOf(0.9f, 0.1f, 0.4f, 1f)
+    private val EMIT_BOSS = floatArrayOf(1.0f, 0.0f, 0.5f)
+    private val COL_GUARD = floatArrayOf(0.3f, 0.15f, 0.15f, 1f)
+    private val EMIT_GUARD = floatArrayOf(0.8f, 0.1f, 0.1f)
+    private val COL_LOOT = floatArrayOf(0.0f, 0.9f, 0.9f, 1f)
+    private val EMIT_LOOT = floatArrayOf(0.0f, 1.0f, 0.7f)
+
+    // Ceiling drawn only within this radius around the player (in tiles)
+    private val CEILING_RADIUS_SQ: Float = 5f * 5f
+
     // Viewport dimensions
     var surfaceWidth: Int = 1280
         private set
@@ -65,6 +93,10 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
 
     private var startTimeMs = SystemClock.uptimeMillis()
     private var lastFrameMs = startTimeMs
+
+    // Debug counter: draw calls of the last frame (for perf verification)
+    var debugDrawCalls: Int = 0
+        private set
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         // Initialize OpenGL states
@@ -105,6 +137,7 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
         val nowMs = SystemClock.uptimeMillis()
         val deltaSec = ((nowMs - lastFrameMs) / 1000.0f).coerceIn(0.001f, 0.05f)
         lastFrameMs = nowMs
+        debugDrawCalls = 0
         val timeSec = (nowMs - startTimeMs) / 1000.0f
 
         cameraController.update(deltaSec)
@@ -202,7 +235,7 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
                 Matrix.scaleM(modelMatrix, 0, 1.7f, 0.1f, 1.7f)
                 val isNeonTile = (gx + gz) % 2 == 0
                 val matColor = if (isNeonTile) floatArrayOf(0.05f, 0.08f, 0.15f, 1f) else floatArrayOf(0.02f, 0.04f, 0.09f, 1f)
-                val emissiveColor = if (isNeonTile) floatArrayOf(0.0f, 0.12f, 0.25f) else floatArrayOf(0f, 0f, 0f)
+                val emissiveColor = if (isNeonTile) floatArrayOf(0.0f, 0.12f, 0.25f) else EMIT_ZERO
                 drawPrimitive(cubeMesh, matColor, emissiveColor, wireframe = 1f, timeSec = timeSec)
             }
         }
@@ -327,27 +360,40 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
         val mapW = world.width
         val mapH = world.height
 
-        val minX = (px - 14).toInt().coerceAtLeast(0)
-        val maxX = (px + 14).toInt().coerceAtMost(mapW - 1)
-        val minZ = (pz - 14).toInt().coerceAtLeast(0)
-        val maxZ = (pz + 14).toInt().coerceAtMost(mapH - 1)
+        // Stage 1 perf: reduced view radius (was 14) — fewer tiles per frame
+        val viewRadius = 9
+        val minX = (px - viewRadius).toInt().coerceAtLeast(0)
+        val maxX = (px + viewRadius).toInt().coerceAtMost(mapW - 1)
+        val minZ = (pz - viewRadius).toInt().coerceAtLeast(0)
+        val maxZ = (pz + viewRadius).toInt().coerceAtMost(mapH - 1)
 
-        // 1. Floor & Ceiling
+        // Camera forward vector on the XZ plane (for behind-camera culling)
+        val fwdX = sin(yawRad)
+        val fwdZ = cos(yawRad)
+
+        // 1. Floor & Ceiling (tiles behind the camera culled; ceiling only near player)
         for (x in minX..maxX) {
             for (z in minZ..maxZ) {
                 val tile = grid[x][z]
                 if (!tile.isSolid) {
+                    val cx = x + 0.5f - px
+                    val cz = z + 0.5f - pz
+                    // Cull tiles clearly behind the view direction
+                    if (cx * fwdX + cz * fwdZ < -1.5f) continue
+
                     // Floor
                     Matrix.setIdentityM(modelMatrix, 0)
                     Matrix.translateM(modelMatrix, 0, x + 0.5f, 0.0f, z + 0.5f)
                     Matrix.scaleM(modelMatrix, 0, 1.0f, 0.05f, 1.0f)
-                    drawPrimitive(cubeMesh, floatArrayOf(0.08f, 0.12f, 0.18f, 1f), floatArrayOf(0f, 0.02f, 0.05f), 1f, timeSec)
+                    drawPrimitive(cubeMesh, COL_FLOOR, EMIT_FLOOR, 1f, timeSec)
 
-                    // Ceiling
-                    Matrix.setIdentityM(modelMatrix, 0)
-                    Matrix.translateM(modelMatrix, 0, x + 0.5f, 2.0f, z + 0.5f)
-                    Matrix.scaleM(modelMatrix, 0, 1.0f, 0.05f, 1.0f)
-                    drawPrimitive(cubeMesh, floatArrayOf(0.04f, 0.06f, 0.10f, 1f), floatArrayOf(0f, 0f, 0f), 1f, timeSec)
+                    // Ceiling — only within a short radius (it otherwise dominates the draw budget)
+                    if (cx * cx + cz * cz <= CEILING_RADIUS_SQ) {
+                        Matrix.setIdentityM(modelMatrix, 0)
+                        Matrix.translateM(modelMatrix, 0, x + 0.5f, 2.0f, z + 0.5f)
+                        Matrix.scaleM(modelMatrix, 0, 1.0f, 0.05f, 1.0f)
+                        drawPrimitive(cubeMesh, COL_CEIL, EMIT_ZERO, 1f, timeSec)
+                    }
                 }
             }
         }
@@ -356,42 +402,45 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
         for (x in minX..maxX) {
             for (z in minZ..maxZ) {
                 val tile = grid[x][z]
+                val cxW = x + 0.5f - px
+                val czW = z + 0.5f - pz
+                if (cxW * fwdX + czW * fwdZ < -1.5f) continue
                 when (tile) {
                     com.example.model.TileType.WALL_CONCRETE, com.example.model.TileType.WALL_CORP_PANEL -> {
                         // Solid Wall Cube
                         Matrix.setIdentityM(modelMatrix, 0)
                         Matrix.translateM(modelMatrix, 0, x + 0.5f, 1.0f, z + 0.5f)
                         Matrix.scaleM(modelMatrix, 0, 1.0f, 2.0f, 1.0f)
-                        drawPrimitive(cubeMesh, floatArrayOf(0.20f, 0.28f, 0.38f, 1f), floatArrayOf(0.0f, 0.1f, 0.2f), 1f, timeSec)
+                        drawPrimitive(cubeMesh, COL_WALL, EMIT_WALL, 1f, timeSec)
                     }
                     com.example.model.TileType.WALL_GLASS -> {
                         // Cyan Holographic Glass Wall
                         Matrix.setIdentityM(modelMatrix, 0)
                         Matrix.translateM(modelMatrix, 0, x + 0.5f, 1.0f, z + 0.5f)
                         Matrix.scaleM(modelMatrix, 0, 0.95f, 2.0f, 0.95f)
-                        drawPrimitive(cubeMesh, floatArrayOf(0.0f, 0.8f, 1.0f, 0.5f), floatArrayOf(0.0f, 0.9f, 1.0f), 1f, timeSec)
+                        drawPrimitive(cubeMesh, COL_GLASS, EMIT_GLASS, 1f, timeSec)
                     }
                     com.example.model.TileType.DOOR_CLOSED, com.example.model.TileType.DOOR_LOCKED_BLUE, com.example.model.TileType.DOOR_LOCKED_RED -> {
                         // Security Door
                         Matrix.setIdentityM(modelMatrix, 0)
                         Matrix.translateM(modelMatrix, 0, x + 0.5f, 1.0f, z + 0.5f)
                         Matrix.scaleM(modelMatrix, 0, 0.9f, 1.9f, 0.3f)
-                        val emitCol = if (tile == com.example.model.TileType.DOOR_LOCKED_RED) floatArrayOf(1.0f, 0.1f, 0.1f) else floatArrayOf(0.0f, 0.7f, 1.0f)
-                        drawPrimitive(cubeMesh, floatArrayOf(0.35f, 0.4f, 0.45f, 1f), emitCol, 0f, timeSec)
+                        val emitCol = if (tile == com.example.model.TileType.DOOR_LOCKED_RED) EMIT_DOOR_RED else EMIT_DOOR_BLUE
+                        drawPrimitive(cubeMesh, COL_DOOR, emitCol, 0f, timeSec)
                     }
                     com.example.model.TileType.TERMINAL, com.example.model.TileType.GHOST_INDEX_MAINFRAME -> {
                         // Terminal / Core
                         Matrix.setIdentityM(modelMatrix, 0)
                         Matrix.translateM(modelMatrix, 0, x + 0.5f, 0.8f, z + 0.5f)
                         Matrix.scaleM(modelMatrix, 0, 0.6f, 1.6f, 0.6f)
-                        drawPrimitive(cubeMesh, floatArrayOf(0.1f, 0.2f, 0.3f, 1f), floatArrayOf(0.0f, 0.8f, 0.9f), 1f, timeSec)
+                        drawPrimitive(cubeMesh, COL_TERMINAL, EMIT_TERMINAL, 1f, timeSec)
                     }
                     com.example.model.TileType.LASER_TRIPWIRE -> {
                         // Laser Tripwire Beam
                         Matrix.setIdentityM(modelMatrix, 0)
                         Matrix.translateM(modelMatrix, 0, x + 0.5f, 0.5f, z + 0.5f)
                         Matrix.scaleM(modelMatrix, 0, 0.1f, 0.1f, 1.0f)
-                        drawPrimitive(cylinderMesh, floatArrayOf(1.0f, 0.0f, 0.3f, 1f), floatArrayOf(1.0f, 0.1f, 0.2f), 0f, timeSec)
+                        drawPrimitive(cylinderMesh, COL_LASER, EMIT_LASER, 0f, timeSec)
                     }
                     else -> {}
                 }
@@ -408,16 +457,16 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
                     Matrix.rotateM(modelMatrix, 0, timeSec * 90f, 0f, 1f, 0f)
                     Matrix.rotateM(modelMatrix, 0, 180f, 1f, 0f, 0f)
                     Matrix.scaleM(modelMatrix, 0, 0.55f, 0.65f, 0.55f)
-                    drawPrimitive(pyramidMesh, floatArrayOf(0.9f, 0.1f, 0.2f, 1f), floatArrayOf(1.0f, 0.2f, 0.2f), 0f, timeSec)
+                    drawPrimitive(pyramidMesh, COL_DRONE, EMIT_DRONE, 0f, timeSec)
                 } else if (enemy.isBoss) {
                     // Boss Paladin: Giant Cylinder + Emissive Core
                     Matrix.rotateM(modelMatrix, 0, enemy.yaw, 0f, 1f, 0f)
                     Matrix.scaleM(modelMatrix, 0, 0.8f, 1.8f, 0.8f)
-                    drawPrimitive(cylinderMesh, floatArrayOf(0.9f, 0.1f, 0.4f, 1f), floatArrayOf(1.0f, 0.0f, 0.5f), 1f, timeSec)
+                    drawPrimitive(cylinderMesh, COL_BOSS, EMIT_BOSS, 1f, timeSec)
                 } else {
                     // Security Guard: Torso Cube + Visor Cylinder
                     Matrix.scaleM(modelMatrix, 0, 0.5f, 1.3f, 0.5f)
-                    drawPrimitive(cubeMesh, floatArrayOf(0.3f, 0.15f, 0.15f, 1f), floatArrayOf(0.8f, 0.1f, 0.1f), 0f, timeSec)
+                    drawPrimitive(cubeMesh, COL_GUARD, EMIT_GUARD, 0f, timeSec)
                 }
             }
         }
@@ -429,7 +478,7 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
                 Matrix.translateM(modelMatrix, 0, item.x, 0.5f + sin(timeSec * 3f) * 0.1f, item.z)
                 Matrix.rotateM(modelMatrix, 0, timeSec * 60f, 0f, 1f, 0f)
                 Matrix.scaleM(modelMatrix, 0, 0.35f, 0.35f, 0.35f)
-                drawPrimitive(sphereMesh, floatArrayOf(0.0f, 0.9f, 0.9f, 1f), floatArrayOf(0.0f, 1.0f, 0.7f), 1f, timeSec)
+                drawPrimitive(sphereMesh, COL_LOOT, EMIT_LOOT, 1f, timeSec)
             }
         }
     }
@@ -453,6 +502,7 @@ class CyberpunkGlRenderer : GLSurfaceView.Renderer {
         wireframe: Float,
         timeSec: Float
     ) {
+        debugDrawCalls++
         // Compute Normal Matrix (transpose of inverse of model matrix)
         Matrix.invertM(scratchMatrix, 0, modelMatrix, 0)
         Matrix.transposeM(normalMatrix, 0, scratchMatrix, 0)
